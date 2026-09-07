@@ -12,16 +12,21 @@ data class NovelReaderConfig(
     val backgroundColorHex: String = "#F5E6D3",
     val textColorHex: String = "#2D2620",
     val isNightMode: Boolean = false,
-    val brightnessPercent: Float = 0.5f, // 0.01f to 1.0f
-    val fontSizeSp: Float = 18f, // 12 to 28
+    val normalBrightness: Float = 0.5f, // 0.01f to 1.0f
+    val nightBrightness: Float = 0.10f, // 0.01f to 0.20f
+    val fontSizeSp: Float = 18f, // 12 to 32
     val letterSpacing: Float = 0.05f, // 0.0 to 1.0
     val lineHeightMultiplier: Float = 1.8f, // 1.0 to 3.0
     val paragraphSpacingMultiplier: Float = 1.0f, // 0.5 to 3.0
+    val paddingHorizontalDp: Float = 16f, // 0 to 80 dp
     val pageTurnMode: PageTurnMode = PageTurnMode.LEFT_TO_RIGHT,
     val showStatusBarUi: Boolean = true,
     val statusBarAtTopRight: Boolean = true,
     val statusBarOpaqueBlack: Boolean = false
 ) {
+    val brightnessPercent: Float
+        get() = if (isNightMode) nightBrightness.coerceIn(0.01f, 0.20f) else normalBrightness.coerceIn(0.01f, 1.0f)
+
     val currentBgColor: Color
         get() = if (isNightMode) Color.Black else try {
             Color(android.graphics.Color.parseColor(backgroundColorHex))
@@ -39,7 +44,9 @@ data class NovelReaderConfig(
 
 data class ComicReaderConfig(
     val isNightMode: Boolean = false,
-    val brightnessPercent: Float = 0.5f,
+    val normalBrightness: Float = 0.5f, // 0.01f to 1.0f
+    val nightBrightness: Float = 0.10f, // 0.01f to 0.20f
+    val paddingHorizontalDp: Float = 0f, // 0 to 80 dp
     val pageTurnMode: PageTurnMode = PageTurnMode.LEFT_TO_RIGHT,
     val autoCropWhiteBorders: Boolean = true,
     val autoSplitDoublePage: Boolean = true,
@@ -47,7 +54,10 @@ data class ComicReaderConfig(
     val showStatusBarUi: Boolean = true,
     val statusBarAtTopRight: Boolean = true,
     val statusBarOpaqueBlack: Boolean = false
-)
+) {
+    val brightnessPercent: Float
+        get() = if (isNightMode) nightBrightness.coerceIn(0.01f, 0.20f) else normalBrightness.coerceIn(0.01f, 1.0f)
+}
 
 object NovelColorPalettes {
     data class Palette(val name: String, val bgHex: String, val textHex: String)

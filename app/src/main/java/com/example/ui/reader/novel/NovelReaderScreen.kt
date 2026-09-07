@@ -10,9 +10,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.rememberScrollableState
-import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,11 +20,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -41,14 +40,13 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.FormatListNumbered
-import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.NightlightRound
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -64,7 +62,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,9 +84,9 @@ import com.example.data.model.NovelColorPalettes
 import com.example.data.model.PageTurnMode
 import com.example.ui.reader.ReaderViewModel
 import com.example.ui.reader.components.ReaderStatusBar
-import com.example.util.NovelParser
 import com.example.util.SystemUiHelper
 import com.example.util.readerClickZones
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,6 +94,7 @@ import kotlinx.coroutines.launch
 fun NovelReaderScreen(
     viewModel: ReaderViewModel,
     onBackToShelf: () -> Unit,
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -99,7 +102,10 @@ fun NovelReaderScreen(
     val activity = context as? Activity
     val scope = rememberCoroutineScope()
 
-    // Enter Sticky Immersive Mode without borders (Requirement 1)
+    var showDisplayAdjustPanel by remember { mutableStateOf(false) }
+    var showSecondaryOptionsSheet by remember { mutableStateOf(false) }
+
+    // Enter Sticky Immersive Mode without borders
     DisposableEffect(activity) {
         if (activity != null) {
             SystemUiHelper.enterImmersiveSticky(activity)
@@ -110,6 +116,7 @@ fun NovelReaderScreen(
             )
         }
         onDispose {
+            viewModel.saveCurrentProgress()
             if (activity != null) {
                 SystemUiHelper.exitImmersive(activity)
                 SystemUiHelper.restoreScreenBrightness(activity)
@@ -130,10 +137,14 @@ fun NovelReaderScreen(
 
     // Handle system back gesture
     BackHandler {
-        if (uiState.isMenuVisible || uiState.isChapterDrawerVisible || uiState.isSettingsDrawerVisible) {
-            viewModel.hideMenu()
-        } else {
-            onBackToShelf()
+        when {
+            showDisplayAdjustPanel -> showDisplayAdjustPanel = false
+            showSecondaryOptionsSheet -> showSecondaryOptionsSheet = false
+            uiState.isMenuVisible || uiState.isChapterDrawerVisible -> viewModel.hideMenu()
+            else -> {
+                viewModel.saveCurrentProgress()
+                onBackToShelf()
+            }
         }
     }
 
@@ -144,59 +155,94 @@ fun NovelReaderScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
+            .padding(0.dp)
             .background(bgColor)
             .testTag("novel_reader_container")
     ) {
         if (uiState.isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = textColor)
+            Box(
+                modifier = Modifier.fillMaxSize().padding(0.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else {
             val pages = uiState.novelPages
-            val totalPages = pages.size.coerceAtLeast(1)
-            val currentPage = uiState.currentNovelPageIndex
+            val totalPages = pages.size
+            val currentPage = uiState.currentNovelPageIndex.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
 
-            // Text Content with PageTurnMode switch
-            Box(
+            // Main Text Container
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(0.dp)
                     .readerClickZones(
                         onPrevious = { viewModel.previousNovelPage() },
-                        onToggleMenu = { viewModel.toggleMenu() },
+                        onToggleMenu = {
+                            viewModel.toggleMenu()
+                            if (showDisplayAdjustPanel) showDisplayAdjustPanel = false
+                        },
                         onNext = { viewModel.nextNovelPage() }
                     )
             ) {
                 when (config.pageTurnMode) {
                     PageTurnMode.VERTICAL_SCROLL -> {
-                        val verticalScrollState = rememberScrollState()
-                        // Scrollable continuous reading
-                        Column(
+                        // Continuous vertical scrolling with real-time char offset tracking (Requirement 2.1)
+                        val vListState = rememberLazyListState()
+
+                        // Listen to scroll changes and update reading progress continuously without page snapping
+                        LaunchedEffect(vListState) {
+                            snapshotFlow {
+                                val firstIdx = vListState.firstVisibleItemIndex
+                                val firstOffset = vListState.firstVisibleItemScrollOffset
+                                Pair(firstIdx, firstOffset)
+                            }
+                                .distinctUntilChanged()
+                                .collect { (idx, _) ->
+                                    val charOffset = uiState.novelParagraphOffsets.getOrNull(idx)?.toLong() ?: 0L
+                                    viewModel.updateNovelScrollPosition(charOffset)
+                                }
+                        }
+
+                        // Scroll to position when external jump happens (e.g. chapter select or bookmark)
+                        LaunchedEffect(uiState.currentScrollCharOffset) {
+                            if (uiState.novelParagraphOffsets.isNotEmpty()) {
+                                val targetIdx = uiState.novelParagraphOffsets.binarySearch(uiState.currentScrollCharOffset.toInt()).let {
+                                    if (it < 0) (-it - 2).coerceAtLeast(0) else it
+                                }
+                                if (targetIdx in uiState.novelParagraphs.indices && vListState.firstVisibleItemIndex != targetIdx) {
+                                    vListState.scrollToItem(targetIdx)
+                                }
+                            }
+                        }
+
+                        LazyColumn(
+                            state = vListState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .verticalScroll(verticalScrollState)
-                                .padding(horizontal = 24.dp, vertical = 36.dp)
+                                .padding(horizontal = config.paddingHorizontalDp.dp)
                         ) {
-                            Text(
-                                text = uiState.currentChapterTitle,
-                                fontSize = (config.fontSizeSp + 4).sp,
-                                fontWeight = FontWeight.Bold,
-                                color = textColor,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            )
-                            val displayText = pages.getOrNull(currentPage) ?: ""
-                            Text(
-                                text = displayText,
-                                fontSize = config.fontSizeSp.sp,
-                                letterSpacing = (config.letterSpacing * config.fontSizeSp * 0.2f).sp,
-                                lineHeight = (config.fontSizeSp * config.lineHeightMultiplier).sp,
-                                color = textColor,
-                                fontFamily = FontFamily.SansSerif
-                            )
+                            itemsIndexed(uiState.novelParagraphs) { _, para ->
+                                if (para.isNotBlank()) {
+                                    Text(
+                                        text = para,
+                                        fontSize = config.fontSizeSp.sp,
+                                        letterSpacing = (config.letterSpacing * config.fontSizeSp * 0.2f).sp,
+                                        lineHeight = (config.fontSizeSp * config.lineHeightMultiplier).sp,
+                                        color = textColor,
+                                        fontFamily = FontFamily.SansSerif,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = (config.fontSizeSp * config.paragraphSpacingMultiplier).dp)
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.height((config.fontSizeSp * config.paragraphSpacingMultiplier).dp))
+                                }
+                            }
                         }
                     }
 
                     PageTurnMode.LEFT_TO_RIGHT -> {
-                        // Standard paging from left to right
                         val pagerState = rememberPagerState(
                             initialPage = currentPage,
                             pageCount = { totalPages }
@@ -216,12 +262,14 @@ fun NovelReaderScreen(
 
                         HorizontalPager(
                             state = pagerState,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = config.paddingHorizontalDp.dp)
                         ) { pageIdx ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 24.dp, vertical = 36.dp)
+                                    .padding(0.dp)
                             ) {
                                 Text(
                                     text = pages.getOrNull(pageIdx) ?: "",
@@ -237,7 +285,6 @@ fun NovelReaderScreen(
                     }
 
                     PageTurnMode.RIGHT_TO_LEFT -> {
-                        // Horizontal right to left paging
                         val pagerState = rememberPagerState(
                             initialPage = currentPage,
                             pageCount = { totalPages }
@@ -258,12 +305,14 @@ fun NovelReaderScreen(
                         HorizontalPager(
                             state = pagerState,
                             reverseLayout = true,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = config.paddingHorizontalDp.dp)
                         ) { pageIdx ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 24.dp, vertical = 36.dp)
+                                    .padding(0.dp)
                             ) {
                                 Text(
                                     text = pages.getOrNull(pageIdx) ?: "",
@@ -280,7 +329,7 @@ fun NovelReaderScreen(
                 }
             }
 
-            // Floating Status Bar UI (Requirement 3.5)
+            // Floating Status Bar UI
             ReaderStatusBar(
                 visible = config.showStatusBarUi,
                 isTopRight = config.statusBarAtTopRight,
@@ -312,7 +361,10 @@ fun NovelReaderScreen(
                             .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
                         IconButton(
-                            onClick = onBackToShelf,
+                            onClick = {
+                                viewModel.saveCurrentProgress()
+                                onBackToShelf()
+                            },
                             modifier = Modifier.testTag("reader_back_button")
                         ) {
                             Icon(
@@ -340,14 +392,15 @@ fun NovelReaderScreen(
                             )
                         }
 
+                        val isBookmarked = uiState.bookmarks.any { it.pageIndex == currentPage }
                         IconButton(
-                            onClick = { viewModel.addBookmark() },
+                            onClick = { viewModel.toggleBookmark() },
                             modifier = Modifier.testTag("bookmark_button")
                         ) {
                             Icon(
-                                Icons.Default.BookmarkBorder,
-                                contentDescription = "添加书签",
-                                tint = Color.White
+                                imageVector = if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = "书签",
+                                tint = if (isBookmarked) Color(0xFF00FF66) else Color.White
                             )
                         }
                     }
@@ -365,7 +418,7 @@ fun NovelReaderScreen(
                     color = Color(0xEE14171A),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         // Progress slider
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -405,54 +458,266 @@ fun NovelReaderScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Quick buttons: 目录, 夜间关灯模式, 排版设置
+                        // Bottom Menu Bar (5 items: 目录, 关灯模式, 显示调节 1/4 screen, 选项, 设置 - Requirement 2.2 & 2.3)
                         Row(
                             horizontalArrangement = Arrangement.SpaceAround,
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            // Catalog / Chapter list
+                            // 1. Catalog / Chapter list
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .clickable { viewModel.toggleChapterDrawer() }
-                                    .padding(8.dp)
+                                    .padding(4.dp)
                             ) {
-                                Icon(Icons.Default.FormatListNumbered, contentDescription = "目录", tint = Color.White)
+                                Icon(Icons.Default.FormatListNumbered, contentDescription = "目录", tint = Color.White, modifier = Modifier.size(22.dp))
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text("目录", color = Color.White, fontSize = 12.sp)
+                                Text("目录", color = Color.White, fontSize = 11.sp)
                             }
 
-                            // Extreme dark / night mode (Moon icon)
+                            // 2. Extreme dark / night mode (Moon icon)
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .clickable { viewModel.toggleNovelNightMode() }
-                                    .padding(8.dp)
+                                    .padding(4.dp)
                             ) {
                                 Icon(
                                     Icons.Default.NightlightRound,
                                     contentDescription = "夜间模式",
-                                    tint = if (config.isNightMode) Color(0xFFFFD54F) else Color.White
+                                    tint = if (config.isNightMode) Color(0xFFFFD54F) else Color.White,
+                                    modifier = Modifier.size(22.dp)
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     if (config.isNightMode) "关灯中" else "关灯模式",
                                     color = if (config.isNightMode) Color(0xFFFFD54F) else Color.White,
-                                    fontSize = 12.sp
+                                    fontSize = 11.sp
                                 )
                             }
 
-                            // Typography and display settings
+                            // 3. Display Adjustment (1/4 screen height panel - Requirement 2.2)
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
-                                    .clickable { viewModel.toggleSettingsDrawer() }
-                                    .padding(8.dp)
+                                    .clickable { showDisplayAdjustPanel = !showDisplayAdjustPanel }
+                                    .padding(4.dp)
                             ) {
-                                Icon(Icons.Default.FormatSize, contentDescription = "排版设置", tint = Color.White)
+                                Icon(
+                                    Icons.Default.Tune,
+                                    contentDescription = "显示调节",
+                                    tint = if (showDisplayAdjustPanel) Color(0xFF00FF66) else Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text("排版", color = Color.White, fontSize = 12.sp)
+                                Text("显示调节", color = if (showDisplayAdjustPanel) Color(0xFF00FF66) else Color.White, fontSize = 11.sp)
+                            }
+
+                            // 4. Secondary Options (Requirement 2.2)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clickable { showSecondaryOptionsSheet = true }
+                                    .padding(4.dp)
+                            ) {
+                                Icon(Icons.Default.Widgets, contentDescription = "选项", tint = Color.White, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("选项", color = Color.White, fontSize = 11.sp)
+                            }
+
+                            // 5. Settings shortcut (Requirement 2.3)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .clickable { onOpenSettings() }
+                                    .padding(4.dp)
+                            ) {
+                                Icon(Icons.Default.Settings, contentDescription = "设置", tint = Color.White, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("设置", color = Color.White, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Display Adjustment Panel: Exactly ~1/4 screen height (Requirement 2.2)
+            AnimatedVisibility(
+                visible = showDisplayAdjustPanel,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
+            ) {
+                Surface(
+                    color = Color(0xF5181A1D),
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Row 1: Brightness Slider (Normal 1%-100% or Night 1%-20% - Requirement B4)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (config.isNightMode) Icons.Default.NightlightRound else Icons.Default.BrightnessMedium,
+                                contentDescription = null,
+                                tint = if (config.isNightMode) Color(0xFFFFD54F) else Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (config.isNightMode) "夜间 ${(config.nightBrightness * 100).toInt()}%" else "亮度 ${(config.normalBrightness * 100).toInt()}%",
+                                color = Color.White,
+                                fontSize = 12.sp
+                            )
+                            Slider(
+                                value = config.brightnessPercent,
+                                onValueChange = { viewModel.updateNovelBrightness(it) },
+                                valueRange = if (config.isNightMode) 0.01f..0.20f else 0.01f..1.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = if (config.isNightMode) Color(0xFFFFD54F) else Color(0xFF00FF66),
+                                    activeTrackColor = if (config.isNightMode) Color(0xFFFFD54F) else Color(0xFF00FF66)
+                                ),
+                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                            )
+                        }
+
+                        // Row 2: Font Size (A- / A+) & Line Height (- / +)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Font Size
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("字号: ${config.fontSizeSp.toInt()}", color = Color.White, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "A-",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF333333))
+                                        .clickable {
+                                            if (config.fontSizeSp > 12f) {
+                                                viewModel.updateNovelConfig { it.copy(fontSizeSp = it.fontSizeSp - 1f) }
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "A+",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF333333))
+                                        .clickable {
+                                            if (config.fontSizeSp < 32f) {
+                                                viewModel.updateNovelConfig { it.copy(fontSizeSp = it.fontSizeSp + 1f) }
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            // Line Height
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("行距: ${String.format("%.1f", config.lineHeightMultiplier)}x", color = Color.White, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "-",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF333333))
+                                        .clickable {
+                                            if (config.lineHeightMultiplier > 1.0f) {
+                                                viewModel.updateNovelConfig { it.copy(lineHeightMultiplier = it.lineHeightMultiplier - 0.1f) }
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "+",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFF333333))
+                                        .clickable {
+                                            if (config.lineHeightMultiplier < 3.0f) {
+                                                viewModel.updateNovelConfig { it.copy(lineHeightMultiplier = it.lineHeightMultiplier + 0.1f) }
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+
+                        // Row 3: Horizontal Margins (左右页面边距 0-80dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("边距: ${config.paddingHorizontalDp.toInt()}dp", color = Color.White, fontSize = 12.sp)
+                            Slider(
+                                value = config.paddingHorizontalDp,
+                                onValueChange = { viewModel.updateNovelConfig { c -> c.copy(paddingHorizontalDp = it) } },
+                                valueRange = 0f..80f,
+                                colors = SliderDefaults.colors(thumbColor = Color(0xFF00FF66), activeTrackColor = Color(0xFF00FF66)),
+                                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                            )
+                        }
+
+                        // Row 4: Background Color Palette Presets
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            NovelColorPalettes.presets.forEach { palette ->
+                                val isSelected = config.backgroundColorHex.equals(palette.bgHex, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(android.graphics.Color.parseColor(palette.bgHex)))
+                                        .border(
+                                            width = if (isSelected) 2.5.dp else 1.dp,
+                                            color = if (isSelected) Color(0xFF00FF66) else Color.Gray,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            viewModel.updateNovelConfig { c ->
+                                                c.copy(
+                                                    backgroundColorHex = palette.bgHex,
+                                                    textColorHex = palette.textHex,
+                                                    isNightMode = false
+                                                )
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "文",
+                                        color = Color(android.graphics.Color.parseColor(palette.textHex)),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -461,7 +726,7 @@ fun NovelReaderScreen(
         }
     }
 
-    // Modal Bottom Sheet: Chapters & Bookmarks
+    // Modal Bottom Sheet: Chapters
     if (uiState.isChapterDrawerVisible) {
         val sheetState = rememberModalBottomSheetState()
         ModalBottomSheet(
@@ -494,7 +759,7 @@ fun NovelReaderScreen(
                         ) {
                             Text(
                                 text = chapter.title,
-                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                color = if (isSelected) Color(0xFF00FF66) else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 fontSize = 15.sp,
                                 maxLines = 1,
@@ -507,248 +772,86 @@ fun NovelReaderScreen(
         }
     }
 
-    // Modal Bottom Sheet: Typography & Visual Settings
-    if (uiState.isSettingsDrawerVisible) {
+    // Modal Bottom Sheet: Secondary Options Menu (Requirement 2.2)
+    if (showSecondaryOptionsSheet) {
         val sheetState = rememberModalBottomSheetState()
-        val config = uiState.novelConfig
-
         ModalBottomSheet(
-            onDismissRequest = { viewModel.toggleSettingsDrawer() },
+            onDismissRequest = { showSecondaryOptionsSheet = false },
             sheetState = sheetState
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp)
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text("阅读视觉与排版设置", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(modifier = Modifier.height(16.dp))
+                Text("阅读排版与页面选项", fontWeight = FontWeight.Bold, fontSize = 18.sp)
 
-                // Brightness Slider (1% to 100%)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.BrightnessMedium, contentDescription = null, tint = Color.Gray)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("屏幕亮度: ${(config.brightnessPercent * 100).toInt()}%", fontSize = 14.sp)
-                }
-                Slider(
-                    value = config.brightnessPercent,
-                    onValueChange = { viewModel.updateNovelConfig { c -> c.copy(brightnessPercent = it) } },
-                    valueRange = 0.01f..1.0f,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Background Color Palette Presets (Requirement 3.1)
-                Text("阅读底色", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    NovelColorPalettes.presets.forEach { palette ->
-                        val isSelected = config.backgroundColorHex.equals(palette.bgHex, ignoreCase = true)
-                        val color = Color(android.graphics.Color.parseColor(palette.bgHex))
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // Page Turn Mode
+                Column {
+                    Text("翻页模式", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        PageTurnMode.values().forEach { mode ->
+                            val isSelected = config.pageTurnMode == mode
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .background(color)
-                                    .border(
-                                        width = if (isSelected) 2.dp else 1.dp,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
-                                        shape = CircleShape
-                                    )
-                                    .clickable {
-                                        viewModel.updateNovelConfig { c ->
-                                            c.copy(
-                                                backgroundColorHex = palette.bgHex,
-                                                textColorHex = palette.textHex,
-                                                isNightMode = false
-                                            )
-                                        }
-                                    }
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(palette.name, fontSize = 11.sp, color = Color.Gray)
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSelected) Color(0xFF00FF66) else Color(0xFF2A2A2A))
+                                    .clickable { viewModel.setNovelPageTurnMode(mode) }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = mode.label,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) Color.Black else Color.White
+                                )
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Typography Controls (Requirement 3.2): Font size, Letter spacing, Line height, Paragraph spacing
-                // 1. Font Size: 12sp ~ 28sp (step 1)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("字号: ${config.fontSizeSp.toInt()} sp", fontSize = 14.sp)
-                    Row {
-                        Text(
-                            text = "A -",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.DarkGray.copy(alpha = 0.2f))
-                                .clickable {
-                                    if (config.fontSizeSp > 12f) {
-                                        viewModel.updateNovelConfig { it.copy(fontSizeSp = it.fontSizeSp - 1f) }
-                                    }
-                                }
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "A +",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.DarkGray.copy(alpha = 0.2f))
-                                .clickable {
-                                    if (config.fontSizeSp < 28f) {
-                                        viewModel.updateNovelConfig { it.copy(fontSizeSp = it.fontSizeSp + 1f) }
-                                    }
-                                }
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
+                // Paragraph Spacing
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("段落间距倍数", fontSize = 14.sp)
+                        Text("${String.format("%.1f", config.paragraphSpacingMultiplier)}x", color = Color(0xFF00FF66), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                     }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 2. Line Height: 1.0 ~ 3.0
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("行距倍数: ${String.format("%.1f", config.lineHeightMultiplier)}x", fontSize = 14.sp)
-                    Row {
-                        Text(
-                            text = "- 0.1",
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.DarkGray.copy(alpha = 0.2f))
-                                .clickable {
-                                    if (config.lineHeightMultiplier > 1.0f) {
-                                        viewModel.updateNovelConfig { it.copy(lineHeightMultiplier = it.lineHeightMultiplier - 0.1f) }
-                                    }
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            fontSize = 12.sp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "+ 0.1",
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color.DarkGray.copy(alpha = 0.2f))
-                                .clickable {
-                                    if (config.lineHeightMultiplier < 3.0f) {
-                                        viewModel.updateNovelConfig { it.copy(lineHeightMultiplier = it.lineHeightMultiplier + 0.1f) }
-                                    }
-                                }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // 3. Letter Spacing: 0.0 ~ 1.0
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("字距: ${String.format("%.1f", config.letterSpacing)}", fontSize = 14.sp)
                     Slider(
-                        value = config.letterSpacing,
-                        onValueChange = { viewModel.updateNovelConfig { c -> c.copy(letterSpacing = it) } },
-                        valueRange = 0.0f..1.0f,
-                        modifier = Modifier.width(180.dp)
+                        value = config.paragraphSpacingMultiplier,
+                        onValueChange = { viewModel.updateNovelConfig { c -> c.copy(paragraphSpacingMultiplier = it) } },
+                        valueRange = 0.5f..3.0f,
+                        colors = SliderDefaults.colors(thumbColor = Color(0xFF00FF66), activeTrackColor = Color(0xFF00FF66))
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Page Turn Direction (Requirement 3.3)
-                Text("翻页模式", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    PageTurnMode.entries.forEach { mode ->
-                        val isSelected = config.pageTurnMode == mode
-                        Text(
-                            text = mode.label,
-                            fontSize = 13.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primary else Color.DarkGray.copy(alpha = 0.2f)
-                                )
-                                .clickable { viewModel.setNovelPageTurnMode(mode) }
-                                .padding(vertical = 10.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Status Bar UI Switches (Requirement 3.5)
-                Text("悬浮状态栏", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Spacer(modifier = Modifier.height(8.dp))
-
+                // Status Bar Toggle
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("显示悬浮状态栏", fontSize = 14.sp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("显示极简悬浮状态栏", fontSize = 14.sp)
+                        Text("显示电量、时间与页码进度", color = Color.Gray, fontSize = 12.sp)
+                    }
                     Switch(
                         checked = config.showStatusBarUi,
-                        onCheckedChange = { viewModel.updateNovelConfig { c -> c.copy(showStatusBarUi = it) } }
+                        onCheckedChange = { viewModel.updateNovelConfig { c -> c.copy(showStatusBarUi = it) } },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.Black, checkedTrackColor = Color(0xFF00FF66))
                     )
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("状态栏位置 (开启为右上角，关闭为左上角)", fontSize = 14.sp)
-                    Switch(
-                        checked = config.statusBarAtTopRight,
-                        onCheckedChange = { viewModel.updateNovelConfig { c -> c.copy(statusBarAtTopRight = it) } }
-                    )
-                }
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("不透明纯黑背景遮挡底字", fontSize = 14.sp)
-                    Switch(
-                        checked = config.statusBarOpaqueBlack,
-                        onCheckedChange = { viewModel.updateNovelConfig { c -> c.copy(statusBarOpaqueBlack = it) } }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }

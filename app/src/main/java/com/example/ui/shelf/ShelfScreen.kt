@@ -100,6 +100,7 @@ import java.io.File
 fun ShelfScreen(
     viewModel: ShelfViewModel,
     onOpenBook: (BookEntity) -> Unit,
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -137,7 +138,7 @@ fun ShelfScreen(
                     .fillMaxWidth()
                     .background(elegantBg)
                     .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 8.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 // Header row
                 Row(
@@ -147,11 +148,14 @@ fun ShelfScreen(
                 ) {
                     // Left: Title & Subtitle
                     if (uiState.currentFolderId != null) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.weight(1f, fill = false),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(elegantSurface)
                                     .clickable { viewModel.exitFolder() }
                                     .testTag("back_folder_button"),
@@ -161,15 +165,15 @@ fun ShelfScreen(
                                     Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "返回上一级",
                                     tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(12.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(
                                     text = uiState.currentFolderName ?: "文件夹",
                                     color = Color.White,
-                                    fontSize = 22.sp,
+                                    fontSize = 20.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     letterSpacing = (-0.5).sp,
                                     maxLines = 1,
@@ -178,41 +182,45 @@ fun ShelfScreen(
                                 Text(
                                     text = "FOLDER",
                                     color = elegantMuted,
-                                    fontSize = 10.sp,
+                                    fontSize = 9.sp,
                                     fontWeight = FontWeight.Medium,
-                                    letterSpacing = 2.sp
+                                    letterSpacing = 1.5.sp
                                 )
                             }
                         }
                     } else {
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(
                                 text = "极简阅读",
                                 color = Color.White,
-                                fontSize = 24.sp,
+                                fontSize = 22.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                letterSpacing = (-0.5).sp
+                                letterSpacing = (-0.5).sp,
+                                maxLines = 1
                             )
                             Text(
                                 text = "MINIMALIST READER",
                                 color = elegantMuted,
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Medium,
-                                letterSpacing = 2.sp
+                                letterSpacing = 1.5.sp,
+                                maxLines = 1
                             )
                         }
                     }
 
-                    // Right Actions
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Right Actions (Adaptive 38dp buttons with 6dp spacing to guarantee '+' import button is never clipped - Bug B2 Fix)
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Search Button
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(elegantSurface)
                                 .clickable {
                                     isSearchActive = !isSearchActive
@@ -225,15 +233,15 @@ fun ShelfScreen(
                                 imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
                                 contentDescription = "搜索",
                                 tint = if (isSearchActive) Color.White else elegantAccent,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         // View mode toggle
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(elegantSurface)
                                 .clickable { viewModel.toggleViewMode() }
                                 .testTag("view_mode_button"),
@@ -243,15 +251,15 @@ fun ShelfScreen(
                                 imageVector = if (uiState.isGridView) Icons.AutoMirrored.Filled.ViewList else Icons.Default.GridView,
                                 contentDescription = "切换视图",
                                 tint = elegantMuted,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
                         // New folder button
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(elegantSurface)
                                 .clickable(enabled = uiState.folderDepth < 2) { viewModel.openNewFolderDialog() }
                                 .testTag("new_folder_button"),
@@ -261,33 +269,33 @@ fun ShelfScreen(
                                 imageVector = Icons.Default.CreateNewFolder,
                                 contentDescription = "新建文件夹",
                                 tint = if (uiState.folderDepth < 2) elegantMuted else Color(0xFF444444),
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        // Theme palette button
+                        // Settings Centre shortcut (Requirement 1.1)
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(elegantSurface)
-                                .clickable { viewModel.openThemeDialog() }
-                                .testTag("theme_settings_button"),
+                                .clickable { onOpenSettings() }
+                                .testTag("settings_button"),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Palette,
-                                contentDescription = "主题设置",
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "设置中心",
                                 tint = elegantMuted,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
 
-                        // Add / Import button
+                        // Add / Import button (Prominent, Always fully displayed - Bug B2 Fix)
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
-                                .clip(RoundedCornerShape(14.dp))
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(elegantAccent)
                                 .clickable {
                                     filePickerLauncher.launch(
@@ -310,7 +318,7 @@ fun ShelfScreen(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "导入书籍",
                                 tint = Color.Black,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -982,18 +990,22 @@ fun BookGridCard(
             overflow = TextOverflow.Ellipsis
         )
 
+        val hasProgress = book.currentPage > 1 || book.progressPercent > 0.01f
         val statusText = if (book.bookType == BookType.COMIC) {
-            if (book.currentPage <= 1) "NEW ARRIVAL" else "${book.currentPage}/${book.totalPages} PAGES"
+            if (!hasProgress) "新导入" else "续读: ${book.currentPage}/${book.totalPages} 页"
         } else {
             val pct = (book.progressPercent * 100).toInt()
-            if (pct == 0) "NEW ARRIVAL" else "PROGRESS $pct%"
+            val chapterText = if (!book.lastReadChapterTitle.isNullOrBlank()) "${book.lastReadChapterTitle} · " else ""
+            if (!hasProgress) "新导入" else "${chapterText}已读 $pct%"
         }
         Text(
             text = statusText,
-            color = if (statusText == "NEW ARRIVAL") secondaryColor else Color(0xFF8E8E8E),
+            color = if (!hasProgress) secondaryColor else Color(0xFF8E8E8E),
             fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
-            letterSpacing = 0.5.sp
+            letterSpacing = 0.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -1134,15 +1146,20 @@ fun BookListRow(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
+                val hasProgress = book.currentPage > 1 || book.progressPercent > 0.01f
                 val statusText = if (book.bookType == BookType.COMIC) {
-                    "${book.currentPage}/${book.totalPages} 页"
+                    if (!hasProgress) "未读 · 共 ${book.totalPages} 页" else "续读: 第 ${book.currentPage}/${book.totalPages} 页"
                 } else {
-                    "${(book.progressPercent * 100).toInt()}%"
+                    val pct = (book.progressPercent * 100).toInt()
+                    val chapter = if (!book.lastReadChapterTitle.isNullOrBlank()) " (${book.lastReadChapterTitle})" else ""
+                    if (!hasProgress) "未读 · 0%" else "续读: $pct%$chapter"
                 }
                 Text(
-                    text = "${book.fileFormat} · 进度: $statusText",
-                    color = Color(0xFF8E8E8E),
-                    fontSize = 11.sp
+                    text = "${book.fileFormat} · $statusText",
+                    color = if (hasProgress) Color(0xFFCCCCCC) else Color(0xFF8E8E8E),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
 
                 Spacer(modifier = Modifier.height(6.dp))

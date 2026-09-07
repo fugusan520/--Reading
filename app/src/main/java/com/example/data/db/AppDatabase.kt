@@ -7,16 +7,18 @@ import androidx.room.RoomDatabase
 import com.example.data.model.BookEntity
 import com.example.data.model.BookmarkEntity
 import com.example.data.model.FolderEntity
+import com.example.data.model.ReadingProgressEntity
 
 @Database(
-    entities = [BookEntity::class, FolderEntity::class, BookmarkEntity::class],
-    version = 1,
+    entities = [BookEntity::class, FolderEntity::class, BookmarkEntity::class, ReadingProgressEntity::class],
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun bookDao(): BookDao
     abstract fun folderDao(): FolderDao
     abstract fun bookmarkDao(): BookmarkDao
+    abstract fun readingProgressDao(): ReadingProgressDao
 
     companion object {
         @Volatile

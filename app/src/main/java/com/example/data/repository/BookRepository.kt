@@ -5,12 +5,14 @@ import com.example.data.model.BookEntity
 import com.example.data.model.BookmarkEntity
 import com.example.data.model.BookType
 import com.example.data.model.FolderEntity
+import com.example.data.model.ReadingProgressEntity
 import kotlinx.coroutines.flow.Flow
 
 class BookRepository(private val db: AppDatabase) {
     private val bookDao = db.bookDao()
     private val folderDao = db.folderDao()
     private val bookmarkDao = db.bookmarkDao()
+    private val readingProgressDao = db.readingProgressDao()
 
     fun getBooks(bookType: BookType, folderId: Long?): Flow<List<BookEntity>> =
         bookDao.getBooks(bookType, folderId)
@@ -55,15 +57,35 @@ class BookRepository(private val db: AppDatabase) {
         folderDao.deleteFolderById(folderId)
     }
 
+    fun getReadingProgressFlow(bookId: Long): Flow<ReadingProgressEntity?> =
+        readingProgressDao.getProgressFlow(bookId)
+
+    suspend fun getReadingProgress(bookId: Long): ReadingProgressEntity? =
+        readingProgressDao.getProgressForBook(bookId)
+
     suspend fun updateReadingProgress(
         id: Long,
+        bookType: BookType,
         page: Int,
         total: Int,
         progress: Float,
         position: Long,
         chapterTitle: String?
     ) {
-        bookDao.updateReadingProgress(id, page, total, progress, position, chapterTitle)
+        val now = System.currentTimeMillis()
+        val progressEntity = ReadingProgressEntity(
+            bookId = id,
+            bookType = bookType,
+            currentPage = page,
+            totalPages = total,
+            progressPercent = progress,
+            characterOffset = position,
+            chapterTitle = chapterTitle,
+            lastReadTimestamp = now
+        )
+        readingProgressDao.saveProgress(progressEntity)
+
+        bookDao.updateReadingProgress(id, page, total, progress, position, chapterTitle, now)
     }
 
     fun getBookmarks(bookId: Long): Flow<List<BookmarkEntity>> =

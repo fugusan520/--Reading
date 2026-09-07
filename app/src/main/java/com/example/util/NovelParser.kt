@@ -174,25 +174,48 @@ object NovelParser {
         return ParsedNovel(fullText, finalizedChapters)
     }
 
+    data class PaginatedResult(
+        val pages: List<String>,
+        val pageStartOffsets: List<Int>
+    )
+
     /**
-     * Splits full text or chapter text into pages with roughly [charsPerPage] characters.
+     * Splits full text or chapter text into pages with roughly [charsPerPage] characters,
+     * along with character start offsets for precise resume tracking.
      */
-    fun paginateText(text: String, charsPerPage: Int = 650): List<String> {
-        if (text.isEmpty()) return listOf("")
+    fun paginateWithOffsets(text: String, charsPerPage: Int = 650): PaginatedResult {
+        if (text.isEmpty()) return PaginatedResult(listOf(""), listOf(0))
         val pages = mutableListOf<String>()
+        val offsets = mutableListOf<Int>()
         var start = 0
         while (start < text.length) {
             var end = (start + charsPerPage).coerceAtMost(text.length)
             if (end < text.length) {
-                // Try to find a paragraph break or sentence punctuation near the boundary
                 val nextNewline = text.indexOf('\n', end - 50)
                 if (nextNewline in (end - 50)..(end + 50) && nextNewline < text.length) {
                     end = nextNewline + 1
                 }
             }
             pages.add(text.substring(start, end))
+            offsets.add(start)
             start = end
         }
-        return if (pages.isEmpty()) listOf(text) else pages
+        val finalPages = if (pages.isEmpty()) listOf(text) else pages
+        val finalOffsets = if (offsets.isEmpty()) listOf(0) else offsets
+        return PaginatedResult(finalPages, finalOffsets)
+    }
+
+    fun findPageForCharOffset(offsets: List<Int>, charOffset: Long): Int {
+        if (offsets.isEmpty() || charOffset <= 0L) return 0
+        val target = charOffset.toInt()
+        val index = offsets.indexOfLast { it <= target }
+        return if (index >= 0) index else 0
+    }
+
+    /**
+     * Splits full text or chapter text into pages with roughly [charsPerPage] characters.
+     */
+    fun paginateText(text: String, charsPerPage: Int = 650): List<String> {
+        return paginateWithOffsets(text, charsPerPage).pages
     }
 }
