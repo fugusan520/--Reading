@@ -28,6 +28,9 @@ class BookRepository(private val db: AppDatabase) {
 
     suspend fun updateBook(book: BookEntity) = bookDao.updateBook(book)
 
+    suspend fun setCustomTitle(bookId: Long, customTitle: String?) =
+        bookDao.setCustomTitle(bookId, customTitle?.trim()?.takeIf { it.isNotEmpty() })
+
     suspend fun deleteBook(id: Long) = bookDao.deleteBookById(id)
 
     suspend fun togglePin(id: Long, currentPin: Boolean) =
