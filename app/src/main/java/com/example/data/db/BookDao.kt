@@ -43,6 +43,9 @@ interface BookDao {
     @Query("UPDATE books SET folderId = :folderId WHERE id = :id")
     suspend fun moveToFolder(id: Long, folderId: Long?)
 
+    @Query("UPDATE books SET customTitle = :customTitle WHERE id = :id")
+    suspend fun setCustomTitle(id: Long, customTitle: String?)
+
     @Query("""
         UPDATE books 
         SET currentPage = :currentPage, totalPages = :totalPages, progressPercent = :progress, 
