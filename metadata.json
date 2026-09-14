@@ -1,6 +1,6 @@
 {
-  "name": "极简阅读",
-  "description": "ColorOS 15 极简本地小说与漫画阅读器，支持全屏沉浸阅读、TXT/UMD/JAR/PDF/EPUB/压缩包导入、排版与智能裁边分割。",
+  "name": "梦游",
+  "description": "ColorOS 15 梦游本地小说与漫画阅读器，支持全屏沉浸阅读、TXT/UMD/JAR/PDF/EPUB/压缩包导入、排版与智能裁边分割。",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
