@@ -12,10 +12,10 @@ data class ShelfThemePreset(
 
 object ShelfThemePresets {
     val presets = listOf(
-        ShelfThemePreset("黑绿", Color(0xFF000000), Color(0xFF00FF66)),
-        ShelfThemePreset("黑蓝", Color(0xFF000000), Color(0xFF2196F3)),
-        ShelfThemePreset("白蓝", Color(0xFFFFFFFF), Color(0xFF2196F3)),
-        ShelfThemePreset("白红", Color(0xFFFFFFFF), Color(0xFFFF4444)),
+        ShelfThemePreset("黑绿", Color(0xFF000000), Color(0xFFC7E8B0)),
+        ShelfThemePreset("黑蓝", Color(0xFF000000), Color(0xFFA8C8E8)),
+        ShelfThemePreset("白蓝", Color(0xFFFFFFFF), Color(0xFFA8C8E8)),
+        ShelfThemePreset("白红", Color(0xFFFFFFFF), Color(0xFFE8A8A8)),
         ShelfThemePreset("深空灰", Color(0xFF1E1E1E), Color(0xFF8E8E8E))
     )
 
@@ -28,7 +28,7 @@ object ShelfThemePresets {
         val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val presetName = sp.getString(KEY_PRESET, "黑绿") ?: "黑绿"
         val primaryInt = sp.getInt(KEY_PRIMARY, Color(0xFF000000).toArgb())
-        val secondaryInt = sp.getInt(KEY_SECONDARY, Color(0xFF00FF66).toArgb())
+        val secondaryInt = sp.getInt(KEY_SECONDARY, Color(0xFFC7E8B0).toArgb())
         return ShelfThemePreset(presetName, Color(primaryInt), Color(secondaryInt))
     }
 
