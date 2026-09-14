@@ -27,7 +27,10 @@ data class BookEntity(
     val fileFormat: String = "TXT",
     val isArchiveExtracted: Boolean = false,
     val addedTime: Long = System.currentTimeMillis(),
-    val lastReadTime: Long = System.currentTimeMillis()
+    val lastReadTime: Long = System.currentTimeMillis(),
+    // v0.4: preserve the source filename while allowing a user-facing title override.
+    val originalFileName: String? = null,
+    val customTitle: String? = null
 )
 
 @Entity(tableName = "folders")
