@@ -43,6 +43,11 @@ class ReaderPreferences(context: Context) {
         private const val KEY_COMIC_SHOW_STATUS_BAR = "key_comic_show_status_bar"
         private const val KEY_COMIC_STATUS_BAR_TOP_RIGHT = "key_comic_status_bar_top_right"
         private const val KEY_COMIC_STATUS_BAR_OPAQUE = "key_comic_status_bar_opaque"
+
+        // v0.4: lights-off/night brightness is intentionally much lower than normal brightness.
+        private const val DEFAULT_NIGHT_BRIGHTNESS = 0.015f
+        private const val MIN_NIGHT_BRIGHTNESS = 0.005f
+        private const val MAX_NIGHT_BRIGHTNESS = 0.08f
     }
 
     // 1.2 Skip details page toggle (default false: show details page by default)
@@ -69,7 +74,8 @@ class ReaderPreferences(context: Context) {
             textColorHex = prefs.getString(KEY_NOVEL_TEXT_COLOR, "#2D2620") ?: "#2D2620",
             isNightMode = prefs.getBoolean(KEY_NOVEL_IS_NIGHT_MODE, false),
             normalBrightness = prefs.getFloat(KEY_NOVEL_NORMAL_BRIGHTNESS, 0.5f).coerceIn(0.01f, 1.0f),
-            nightBrightness = prefs.getFloat(KEY_NOVEL_NIGHT_BRIGHTNESS, 0.10f).coerceIn(0.01f, 0.20f),
+            nightBrightness = prefs.getFloat(KEY_NOVEL_NIGHT_BRIGHTNESS, DEFAULT_NIGHT_BRIGHTNESS)
+                .coerceIn(MIN_NIGHT_BRIGHTNESS, MAX_NIGHT_BRIGHTNESS),
             fontSizeSp = prefs.getFloat(KEY_NOVEL_FONT_SIZE, 18f).coerceIn(12f, 32f),
             letterSpacing = prefs.getFloat(KEY_NOVEL_LETTER_SPACING, 0.05f).coerceIn(0.0f, 1.0f),
             lineHeightMultiplier = prefs.getFloat(KEY_NOVEL_LINE_HEIGHT, 1.8f).coerceIn(1.0f, 3.0f),
@@ -88,7 +94,7 @@ class ReaderPreferences(context: Context) {
             .putString(KEY_NOVEL_TEXT_COLOR, config.textColorHex)
             .putBoolean(KEY_NOVEL_IS_NIGHT_MODE, config.isNightMode)
             .putFloat(KEY_NOVEL_NORMAL_BRIGHTNESS, config.normalBrightness)
-            .putFloat(KEY_NOVEL_NIGHT_BRIGHTNESS, config.nightBrightness)
+            .putFloat(KEY_NOVEL_NIGHT_BRIGHTNESS, config.nightBrightness.coerceIn(MIN_NIGHT_BRIGHTNESS, MAX_NIGHT_BRIGHTNESS))
             .putFloat(KEY_NOVEL_FONT_SIZE, config.fontSizeSp)
             .putFloat(KEY_NOVEL_LETTER_SPACING, config.letterSpacing)
             .putFloat(KEY_NOVEL_LINE_HEIGHT, config.lineHeightMultiplier)
@@ -114,7 +120,8 @@ class ReaderPreferences(context: Context) {
         return ComicReaderConfig(
             isNightMode = prefs.getBoolean(KEY_COMIC_IS_NIGHT_MODE, false),
             normalBrightness = prefs.getFloat(KEY_COMIC_NORMAL_BRIGHTNESS, 0.5f).coerceIn(0.01f, 1.0f),
-            nightBrightness = prefs.getFloat(KEY_COMIC_NIGHT_BRIGHTNESS, 0.10f).coerceIn(0.01f, 0.20f),
+            nightBrightness = prefs.getFloat(KEY_COMIC_NIGHT_BRIGHTNESS, DEFAULT_NIGHT_BRIGHTNESS)
+                .coerceIn(MIN_NIGHT_BRIGHTNESS, MAX_NIGHT_BRIGHTNESS),
             paddingHorizontalDp = prefs.getFloat(KEY_COMIC_PADDING_HORIZONTAL, 0f).coerceIn(0f, 80f),
             pageTurnMode = pageTurnMode,
             autoCropWhiteBorders = prefs.getBoolean(KEY_COMIC_AUTO_CROP, true),
@@ -130,7 +137,7 @@ class ReaderPreferences(context: Context) {
         prefs.edit()
             .putBoolean(KEY_COMIC_IS_NIGHT_MODE, config.isNightMode)
             .putFloat(KEY_COMIC_NORMAL_BRIGHTNESS, config.normalBrightness)
-            .putFloat(KEY_COMIC_NIGHT_BRIGHTNESS, config.nightBrightness)
+            .putFloat(KEY_COMIC_NIGHT_BRIGHTNESS, config.nightBrightness.coerceIn(MIN_NIGHT_BRIGHTNESS, MAX_NIGHT_BRIGHTNESS))
             .putFloat(KEY_COMIC_PADDING_HORIZONTAL, config.paddingHorizontalDp)
             .putString(KEY_COMIC_PAGE_TURN_MODE, config.pageTurnMode.name)
             .putBoolean(KEY_COMIC_AUTO_CROP, config.autoCropWhiteBorders)
